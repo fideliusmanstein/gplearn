@@ -145,6 +145,12 @@ def _log_loss(y, y_pred, w):
     score = y * np.log(y_pred) + (1 - y) * np.log(inv_y_pred)
     return np.average(-score, weights=w)
 
+def _optimized_mean_square_error(y, y_pred, w):
+    """Calculate the mean square error by optimizing over parameters using regression.
+    Then returning the mean square error using the optimized parameters."""
+    print("returning error")
+    return np.average(((y_pred - y) ** 2), weights=w)
+
 
 weighted_pearson = _Fitness(function=_weighted_pearson,
                             greater_is_better=True)
@@ -158,10 +164,12 @@ root_mean_square_error = _Fitness(function=_root_mean_square_error,
                                   greater_is_better=False)
 log_loss = _Fitness(function=_log_loss,
                     greater_is_better=False)
+optimized_mean_square_error = _Fitness(function=_optimized_mean_square_error, greater_is_better=False)
 
 _fitness_map = {'pearson': weighted_pearson,
                 'spearman': weighted_spearman,
                 'mean absolute error': mean_absolute_error,
                 'mse': mean_square_error,
                 'rmse': root_mean_square_error,
-                'log loss': log_loss}
+                'log loss': log_loss,
+                'optimized mse': optimized_mean_square_error}
