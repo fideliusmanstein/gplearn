@@ -144,7 +144,12 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
         curr_sample_weight[not_indices] = 0
         oob_sample_weight[indices] = 0
 
-        program.raw_fitness_ = program.raw_fitness(X, y, curr_sample_weight)
+
+        # TODO: if we want to use optimized regression: optimize constants here!!
+        if params['_optimize_constants']:
+            program.raw_fitness_ = program.optimized_fitness(X, y, curr_sample_weight)
+        else:
+            program.raw_fitness_ = program.raw_fitness(X, y, curr_sample_weight)
         if max_samples < n_samples:
             # Calculate OOB fitness
             program.oob_fitness_ = program.raw_fitness(X, y, oob_sample_weight)
@@ -178,6 +183,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                  function_set=('add', 'sub', 'mul', 'div'),
                  transformer=None,
                  metric='mean absolute error',
+                 optimize_constants=False,
                  parsimony_coefficient=0.001,
                  p_crossover=0.9,
                  p_subtree_mutation=0.01,
@@ -205,6 +211,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         self.function_set = function_set
         self.transformer = transformer
         self.metric = metric
+        self.optimize_constants = optimize_constants
         self.parsimony_coefficient = parsimony_coefficient
         self.p_crossover = p_crossover
         self.p_subtree_mutation = p_subtree_mutation
@@ -418,6 +425,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
 
         params = self.get_params()
         params['_metric'] = self._metric
+        params['_optimize_constants'] = self.optimize_constants
         if hasattr(self, '_transformer'):
             params['_transformer'] = self._transformer
         else:
@@ -797,6 +805,7 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
                  init_method='half and half',
                  function_set=('add', 'sub', 'mul', 'div'),
                  metric='mean absolute error',
+                 optimize_constants=False,
                  parsimony_coefficient=0.001,
                  p_crossover=0.9,
                  p_subtree_mutation=0.01,
@@ -820,6 +829,7 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
             init_method=init_method,
             function_set=function_set,
             metric=metric,
+            optimize_constants=optimize_constants,
             parsimony_coefficient=parsimony_coefficient,
             p_crossover=p_crossover,
             p_subtree_mutation=p_subtree_mutation,

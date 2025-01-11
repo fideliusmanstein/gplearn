@@ -10,12 +10,14 @@ computer program. It is used for creating and evolving programs used in the
 # License: BSD 3 clause
 
 from copy import copy
+import time
 
 import numpy as np
 from sklearn.utils.random import sample_without_replacement
 
 from .functions import _Function
 from .utils import check_random_state
+from scipy.optimize import minimize
 
 
 class _Program(object):
@@ -465,6 +467,54 @@ class _Program(object):
         raw_fitness = self.metric(y, y_pred, sample_weight)
 
         return raw_fitness
+    
+    def optimized_fitness(self, X, y, sample_weight):
+        # Check for single-node programs
+        time0 = time.time()
+        node = self.program[0]
+        if isinstance(node, float) or isinstance(node, int):
+            return self.raw_fitness(X, y, sample_weight)
+        
+        # unoptimized_fitness = self.raw_fitness(X, y, sample_weight)
+        
+        def objective(constants):
+            program = copy(self.program)
+            const_idx = 0
+            for i, node in enumerate(program):
+                if isinstance(node, float):
+                    program[i] = constants[const_idx]
+                    const_idx += 1
+                self.program = program
+                y_pred = self.execute(X)
+                if self.transformer:
+                    y_pred = self.transformer(y_pred)
+            return self.metric(y, y_pred, sample_weight)
+
+        # Extract initial constants from the program
+        initial_constants = [node for node in self.program if isinstance(node, float)]
+
+        if initial_constants:
+            result = minimize(objective, initial_constants)
+            optimized_constants = result.x
+
+            # Update the program with optimized constants
+            const_idx = 0
+            for i, node in enumerate(self.program):
+                if isinstance(node, float):
+                    self.program[i] = optimized_constants[const_idx]
+                    const_idx += 1
+
+            time1 = time.time()
+            if time1 - time0 > 2:
+                pass
+                # print(f'Optimized fitness took {time1 - time0} seconds')
+            return result.fun
+        else:
+            return self.raw_fitness(X, y, sample_weight)
+
+        # optimized_fitness = self.raw_fitness(X, y, sample_weight)
+        # print(f'Unoptimized fitness: {unoptimized_fitness}')
+        # print(f'Optimized fitness: {optimized_fitness}')
 
     def fitness(self, parsimony_coefficient=None):
         """Evaluate the penalized fitness of the program according to X, y.
