@@ -17,7 +17,8 @@ from sklearn.utils.random import sample_without_replacement
 
 from .functions import _Function
 from .utils import check_random_state
-from scipy.optimize import minimize
+from scipy.optimize import least_squares
+from numba import jit
 
 
 class _Program(object):
@@ -467,6 +468,37 @@ class _Program(object):
         raw_fitness = self.metric(y, y_pred, sample_weight)
 
         return raw_fitness
+
+    def build_callable_program(self):
+        # Check for single-node programs
+        node = self.program[0]
+        if isinstance(node, float):
+            return lambda X: np.repeat(node, X.shape[0])
+        if isinstance(node, int):
+            return lambda X: X[:, node]
+
+        apply_stack = []
+
+        for node in self.program:
+            if isinstance(node, _Function):
+                apply_stack.append([node])
+            else:
+                # Lazily evaluate later
+                apply_stack[-1].append(node)
+            
+            while len(apply_stack[-1]) == apply_stack[-1][0].arity + 1:
+                # Apply functions that have sufficient arguments
+                function = apply_stack[-1][0]
+                terminals = apply_stack[-1][1:]
+                intermediate_function = lambda X: function(
+                    *[t(X) if callable(t) 
+                        else np.repeat(t, X.shape[0]) if isinstance(t, float) else X[:, t] for t in terminals])
+                if len(apply_stack) != 1:
+                    apply_stack.pop()
+                    apply_stack[-1].append(intermediate_function)
+                else:
+                    return intermediate_function
+
     
     def optimized_fitness(self, X, y, sample_weight):
         # Check for single-node programs
@@ -475,26 +507,20 @@ class _Program(object):
         if isinstance(node, float) or isinstance(node, int):
             return self.raw_fitness(X, y, sample_weight)
         
-        # unoptimized_fitness = self.raw_fitness(X, y, sample_weight)
+        self.function = self.build_callable_program()
         
         def objective(constants):
-            program = copy(self.program)
-            const_idx = 0
-            for i, node in enumerate(program):
-                if isinstance(node, float):
-                    program[i] = constants[const_idx]
-                    const_idx += 1
-                self.program = program
-                y_pred = self.execute(X)
-                if self.transformer:
-                    y_pred = self.transformer(y_pred)
+            self.program = constants
+            y_pred = self.function(X)
+            if self.transformer:
+                y_pred = self.transformer(y_pred)
             return self.metric(y, y_pred, sample_weight)
 
         # Extract initial constants from the program
         initial_constants = [node for node in self.program if isinstance(node, float)]
 
         if initial_constants:
-            result = minimize(objective, initial_constants)
+            result = least_squares(objective, initial_constants, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
             optimized_constants = result.x
 
             # Update the program with optimized constants
@@ -505,9 +531,8 @@ class _Program(object):
                     const_idx += 1
 
             time1 = time.time()
-            if time1 - time0 > 2:
-                pass
-                # print(f'Optimized fitness took {time1 - time0} seconds')
+            # if time1 - time0 > 2:
+            # print(f'Optimized fitness took {time1 - time0} seconds')
             return result.fun
         else:
             return self.raw_fitness(X, y, sample_weight)
