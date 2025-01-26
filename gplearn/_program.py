@@ -490,14 +490,21 @@ class _Program(object):
                 # Apply functions that have sufficient arguments
                 function = apply_stack[-1][0]
                 terminals = apply_stack[-1][1:]
-                intermediate_function = lambda X: function(
-                    *[t(X) if callable(t) 
-                        else np.repeat(t, X.shape[0]) if isinstance(t, float) else X[:, t] for t in terminals])
+                intermediate_function = lambda X, f=function, t=terminals: f(
+                    *[self.translate_terminal(terminal)(X) for terminal in t])
                 if len(apply_stack) != 1:
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_function)
                 else:
                     return intermediate_function
+                
+    def translate_terminal(self, terminal):
+        if isinstance(terminal, int):
+            return lambda X: X[:, terminal]
+        if isinstance(terminal, float):
+            return lambda X: np.repeat(terminal, X.shape[0])
+        if callable(terminal):
+            return terminal
 
     
     def optimized_fitness(self, X, y, sample_weight):
@@ -520,7 +527,7 @@ class _Program(object):
         initial_constants = [node for node in self.program if isinstance(node, float)]
 
         if initial_constants:
-            result = least_squares(objective, initial_constants, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
+            result = least_squares(objective, initial_constants) #, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
             optimized_constants = result.x
 
             # Update the program with optimized constants
