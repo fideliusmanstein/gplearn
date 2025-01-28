@@ -153,7 +153,7 @@ class _Program(object):
 
         if self.program is not None:
             if not self.validate_program():
-                raise ValueError('The supplied program is incomplete.')
+                raise ValueError(f'The supplied program {self.program} is incomplete.')
         else:
             # Create a naive random program
             self.program = self.build_program(random_state)
@@ -512,6 +512,7 @@ class _Program(object):
         time0 = time.time()
         node = self.program[0]
         if isinstance(node, float) or isinstance(node, int):
+            print("returning single node program")
             return self.raw_fitness(X, y, sample_weight)
         
         self.function = self.build_callable_program()
@@ -540,9 +541,13 @@ class _Program(object):
             time1 = time.time()
             # if time1 - time0 > 2:
             # print(f'Optimized fitness took {time1 - time0} seconds')
-            return result.fun
+            fitness = result.fun[0]
+            # print(type(fitness))
+            return fitness
         else:
-            return self.raw_fitness(X, y, sample_weight)
+            fitness = self.raw_fitness(X, y, sample_weight)
+            # print("no constants to optimize for")
+            return fitness
 
         # optimized_fitness = self.raw_fitness(X, y, sample_weight)
         # print(f'Unoptimized fitness: {unoptimized_fitness}')
