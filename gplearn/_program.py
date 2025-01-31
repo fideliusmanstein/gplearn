@@ -512,13 +512,16 @@ class _Program(object):
         time0 = time.time()
         node = self.program[0]
         if isinstance(node, float) or isinstance(node, int):
-            print("returning single node program")
             return self.raw_fitness(X, y, sample_weight)
         
         self.function = self.build_callable_program()
         
         def objective(constants):
-            self.program = constants
+            const_idx = 0
+            for i, node in enumerate(self.program):
+                if isinstance(node, float):
+                    self.program[i] = constants[const_idx]
+                    const_idx += 1
             y_pred = self.function(X)
             if self.transformer:
                 y_pred = self.transformer(y_pred)
