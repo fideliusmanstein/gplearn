@@ -144,7 +144,6 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
         curr_sample_weight[not_indices] = 0
         oob_sample_weight[indices] = 0
 
-
         if params['_optimize_constants']:
             program.raw_fitness_ = program.optimized_fitness(X, y, curr_sample_weight)
         else:

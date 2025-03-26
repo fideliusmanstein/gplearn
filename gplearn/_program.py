@@ -531,7 +531,7 @@ class _Program(object):
         initial_constants = [node for node in self.program if isinstance(node, float)]
 
         if initial_constants:
-            result = least_squares(objective, initial_constants) #, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
+            result = least_squares(objective, [0.7, 0.9]) #, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
             optimized_constants = result.x
 
             # Update the program with optimized constants
