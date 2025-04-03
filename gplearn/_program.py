@@ -10,6 +10,7 @@ computer program. It is used for creating and evolving programs used in the
 # License: BSD 3 clause
 
 from copy import copy
+import itertools
 import time
 
 import numpy as np
@@ -470,6 +471,17 @@ class _Program(object):
         return raw_fitness
 
     def build_callable_program(self):
+        # compiles single terminals, usable for lambdas
+        constant_counter = itertools.count()    
+        def translate_terminal(terminal, constants):
+            if isinstance(terminal, int):
+                return lambda X: X[:, terminal]
+            if isinstance(terminal, float):
+                return lambda X: np.repeat(constants[next(constant_counter)], X.shape[0])
+            if callable(terminal):
+                return terminal
+            
+
         # Check for single-node programs
         node = self.program[0]
         if isinstance(node, float):
@@ -490,21 +502,14 @@ class _Program(object):
                 # Apply functions that have sufficient arguments
                 function = apply_stack[-1][0]
                 terminals = apply_stack[-1][1:]
-                intermediate_function = lambda X, f=function, t=terminals: f(
-                    *[self.translate_terminal(terminal)(X) for terminal in t])
+                # turn terminals into lambdas
+                intermediate_function = lambda X, constants: function(
+                    *[translate_terminal(t, constants)(X, constants) for t in terminals])
                 if len(apply_stack) != 1:
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_function)
                 else:
                     return intermediate_function
-                
-    def translate_terminal(self, terminal):
-        if isinstance(terminal, int):
-            return lambda X: X[:, terminal]
-        if isinstance(terminal, float):
-            return lambda X: np.repeat(terminal, X.shape[0])
-        if callable(terminal):
-            return terminal
 
     
     def optimized_fitness(self, X, y, sample_weight):
@@ -517,12 +522,12 @@ class _Program(object):
         self.function = self.build_callable_program()
         
         def objective(constants):
-            const_idx = 0
-            for i, node in enumerate(self.program):
-                if isinstance(node, float):
-                    self.program[i] = constants[const_idx]
-                    const_idx += 1
-            y_pred = self.function(X)
+            # const_idx = 0
+            # for i, node in enumerate(self.program):
+            #     if isinstance(node, float):
+            #         self.program[i] = constants[const_idx]
+            #         const_idx += 1
+            y_pred = self.function(X, constants)
             if self.transformer:
                 y_pred = self.transformer(y_pred)
             return self.metric(y, y_pred, sample_weight)
@@ -531,7 +536,7 @@ class _Program(object):
         initial_constants = [node for node in self.program if isinstance(node, float)]
 
         if initial_constants:
-            result = least_squares(objective, [0.7, 0.9]) #, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
+            result = least_squares(objective, initial_constants) #, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
             optimized_constants = result.x
 
             # Update the program with optimized constants
