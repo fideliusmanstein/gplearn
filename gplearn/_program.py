@@ -470,19 +470,24 @@ class _Program(object):
 
         return raw_fitness
 
-    def build_callable_program(self):
-        # compiles single terminals, usable for lambdas
-        constant_counter = itertools.count()    
-        def translate_terminal(terminal, constants):
-            if isinstance(terminal, int):
-                return lambda X: X[:, terminal]
-            if isinstance(terminal, float):
-                return lambda X: np.repeat(constants[next(constant_counter)], X.shape[0])
-            if callable(terminal):
-                return terminal
-            
+    def get_constant_indices(self):
+        """Extract the indices of constants in the program."""
+        return [node for node in self.program if isinstance(node, float)]
 
+    def translate_terminal(self, terminal):
+        if isinstance(terminal, int):
+            return lambda X, constants: X[:, terminal]
+        if isinstance(terminal, float):
+            # Find the correct index of the terminal in the program
+            correct_index = self.constant_indices.index(terminal)
+            return lambda X, constants: np.repeat(constants[correct_index], X.shape[0])
+        if callable(terminal):
+            # Wrap the callable terminal in a lambda to avoid recursion
+            return terminal
+
+    def build_callable_program(self):
         # Check for single-node programs
+        self.constant_indices = self.get_constant_indices()
         node = self.program[0]
         if isinstance(node, float):
             return lambda X: np.repeat(node, X.shape[0])
@@ -503,40 +508,40 @@ class _Program(object):
                 function = apply_stack[-1][0]
                 terminals = apply_stack[-1][1:]
                 # turn terminals into lambdas
-                intermediate_function = lambda X, constants: function(
-                    *[translate_terminal(t, constants)(X, constants) for t in terminals])
+                intermediate_function = lambda X, constants, t=terminals, f=function: f(
+                    *[self.translate_terminal(terminal)(X, constants) for terminal in t])
                 if len(apply_stack) != 1:
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_function)
                 else:
                     return intermediate_function
-
-    
+        
     def optimized_fitness(self, X, y, sample_weight):
         # Check for single-node programs
-        time0 = time.time()
         node = self.program[0]
         if isinstance(node, float) or isinstance(node, int):
             return self.raw_fitness(X, y, sample_weight)
         
         self.function = self.build_callable_program()
         
+        # build objective function for optimization
         def objective(constants):
-            # const_idx = 0
-            # for i, node in enumerate(self.program):
-            #     if isinstance(node, float):
-            #         self.program[i] = constants[const_idx]
-            #         const_idx += 1
             y_pred = self.function(X, constants)
             if self.transformer:
                 y_pred = self.transformer(y_pred)
-            return self.metric(y, y_pred, sample_weight)
+            return y - y_pred
 
         # Extract initial constants from the program
         initial_constants = [node for node in self.program if isinstance(node, float)]
 
         if initial_constants:
-            result = least_squares(objective, initial_constants) #, method="lm", verbose=2, ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
+            # y_pred = self.function(X, initial_constants)
+            # if self.transformer:
+            #     y_pred = self.transformer(y_pred)
+            try:
+                result = least_squares(objective, initial_constants, method="lm", ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
+            except Exception as e:
+                result = least_squares(objective, initial_constants, method="trf", ftol=10e-4, gtol=10e-4, xtol=10e-4, jac="cs")
             optimized_constants = result.x
 
             # Update the program with optimized constants
@@ -546,20 +551,13 @@ class _Program(object):
                     self.program[i] = optimized_constants[const_idx]
                     const_idx += 1
 
-            time1 = time.time()
-            # if time1 - time0 > 2:
-            # print(f'Optimized fitness took {time1 - time0} seconds')
-            fitness = result.fun[0]
-            # print(type(fitness))
+            fitness = result.cost
+            # print(result.message)
             return fitness
         else:
             fitness = self.raw_fitness(X, y, sample_weight)
-            # print("no constants to optimize for")
             return fitness
-
-        # optimized_fitness = self.raw_fitness(X, y, sample_weight)
-        # print(f'Unoptimized fitness: {unoptimized_fitness}')
-        # print(f'Optimized fitness: {optimized_fitness}')
+        
 
     def fitness(self, parsimony_coefficient=None):
         """Evaluate the penalized fitness of the program according to X, y.
